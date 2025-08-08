@@ -3,6 +3,21 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// --- CONEXIÓN A BASE DE DATOS ---
+$host = 'localhost';
+$usuario = 'root';
+$contrasena = '';
+$baseDatos = 'gestion_grupos';
+
+$mensajeConexion = '';
+$conexion = new mysqli($host, $usuario, $contrasena, $baseDatos);
+
+if ($conexion->connect_error) {
+    die("Error de conexión: " . $conexion->connect_error);
+} else {
+    $mensajeConexion = "Conexión exitosa a la base de datos '$baseDatos'.";
+}
+
 // Cargar PhpSpreadsheet
 require 'vendor/autoload.php';
 
@@ -20,10 +35,9 @@ function descargarPlantillaExcel() {
     $sheet->setCellValue('B1', 'Correo');
     $sheet->setCellValue('C1', 'Carnet');
 
-    // Estilo simple para encabezados
+    // Negrita encabezados
     $sheet->getStyle('A1:C1')->getFont()->setBold(true);
 
-    // Preparar archivo para descarga
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment;filename="plantilla_estudiantes.xlsx"');
     header('Cache-Control: max-age=0');
@@ -33,55 +47,6 @@ function descargarPlantillaExcel() {
     exit;
 }
 
-// Función para importar estudiantes desde Excel a $_SESSION['estudiantes']
-function importarEstudiantesDesdeExcel($rutaArchivo) {
-    $reader = IOFactory::createReader('Xlsx');
-    $spreadsheet = $reader->load($rutaArchivo);
-    $hoja = $spreadsheet->getActiveSheet();
-
-    if (!isset($_SESSION['estudiantes'])) {
-        $_SESSION['estudiantes'] = [];
-    }
-
-    $importados = 0;
-    $errores = 0;
-
-    foreach ($hoja->getRowIterator(2) as $fila) {
-        $rowIndex = $fila->getRowIndex();
-
-        $nombre = trim($hoja->getCell('A' . $rowIndex)->getValue());
-        $correo = trim($hoja->getCell('B' . $rowIndex)->getValue());
-        $carnet = trim($hoja->getCell('C' . $rowIndex)->getValue());
-
-        if ($nombre !== '' && $correo !== '' && $carnet !== '' && ctype_digit($carnet)) {
-            // Evitar duplicados en sesión
-            $existe = false;
-            foreach ($_SESSION['estudiantes'] as $e) {
-                if (strtolower($e['correo']) === strtolower($correo) || $e['carnet'] === $carnet) {
-                    $existe = true;
-                    break;
-                }
-            }
-
-            if (!$existe) {
-                $_SESSION['estudiantes'][] = [
-                    'nombre' => $nombre,
-                    'correo' => $correo,
-                    'carnet' => $carnet
-                ];
-                $importados++;
-            } else {
-                $errores++;
-            }
-        } else {
-            $errores++;
-        }
-    }
-
-    return ['importados' => $importados, 'errores' => $errores];
-}
-
-// Manejo de acciones
 $error = '';
 $mensajeImportacion = '';
 
@@ -90,9 +55,9 @@ if (isset($_GET['descargar_plantilla'])) {
     descargarPlantillaExcel();
 }
 
+// Agregar estudiante
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    // Agregar estudiante
+    // Agregar estudiante manual
     if (isset($_POST['add_estudiante'])) {
         $nombre = trim($_POST['nombre_estudiante']);
         $correo = trim($_POST['correo_estudiante']);
@@ -101,28 +66,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nombre === '' || $correo === '' || $carnet === '' || !ctype_digit($carnet)) {
             $error = "Debes completar todos los campos correctamente. El número de carné debe contener solo números.";
         } else {
-            // Evitar duplicados en sesión
-            $existe = false;
-            if (isset($_SESSION['estudiantes'])) {
-                foreach ($_SESSION['estudiantes'] as $e) {
-                    if (strtolower($e['correo']) === strtolower($correo) || $e['carnet'] === $carnet) {
-                        $existe = true;
-                        break;
-                    }
-                }
-            } else {
-                $_SESSION['estudiantes'] = [];
-            }
+            $stmtCheck = $conexion->prepare("SELECT id FROM estudiantes WHERE correo = ? OR carnet = ?");
+            $stmtCheck->bind_param("ss", $correo, $carnet);
+            $stmtCheck->execute();
+            $stmtCheck->store_result();
 
-            if ($existe) {
+            if ($stmtCheck->num_rows > 0) {
                 $error = "Ya existe un estudiante con ese correo o carné.";
             } else {
-                $_SESSION['estudiantes'][] = [
-                    'nombre' => $nombre,
-                    'correo' => $correo,
-                    'carnet' => $carnet
-                ];
+                $stmtInsert = $conexion->prepare("INSERT INTO estudiantes (nombre, correo, carnet) VALUES (?, ?, ?)");
+                $stmtInsert->bind_param("sss", $nombre, $correo, $carnet);
+                if ($stmtInsert->execute()) {
+                    $mensajeImportacion = "Estudiante agregado correctamente.";
+                } else {
+                    $error = "Error al agregar estudiante: " . $stmtInsert->error;
+                }
+                $stmtInsert->close();
             }
+            $stmtCheck->close();
         }
     }
 
@@ -136,37 +97,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nombre === '' || $correo === '' || $carnet === '' || !ctype_digit($carnet)) {
             $error = "Todos los campos son obligatorios y el carné debe contener solo números.";
         } else {
-            if (!isset($_SESSION['estudiantes'][$id])) {
-                $error = "Estudiante no encontrado para editar.";
-            } else {
-                // Validar duplicados excepto el mismo índice
-                $existe = false;
-                foreach ($_SESSION['estudiantes'] as $key => $e) {
-                    if ($key !== $id && (strtolower($e['correo']) === strtolower($correo) || $e['carnet'] === $carnet)) {
-                        $existe = true;
-                        break;
-                    }
-                }
+            $stmtCheck = $conexion->prepare("SELECT id FROM estudiantes WHERE (correo = ? OR carnet = ?) AND id != ?");
+            $stmtCheck->bind_param("ssi", $correo, $carnet, $id);
+            $stmtCheck->execute();
+            $stmtCheck->store_result();
 
-                if ($existe) {
-                    $error = "Ya existe otro estudiante con ese correo o carné.";
+            if ($stmtCheck->num_rows > 0) {
+                $error = "Ya existe otro estudiante con ese correo o carné.";
+            } else {
+                $stmtUpdate = $conexion->prepare("UPDATE estudiantes SET nombre = ?, correo = ?, carnet = ? WHERE id = ?");
+                $stmtUpdate->bind_param("sssi", $nombre, $correo, $carnet, $id);
+                if ($stmtUpdate->execute()) {
+                    $mensajeImportacion = "Estudiante actualizado correctamente.";
                 } else {
-                    $_SESSION['estudiantes'][$id] = [
-                        'nombre' => $nombre,
-                        'correo' => $correo,
-                        'carnet' => $carnet
-                    ];
+                    $error = "Error al actualizar estudiante: " . $stmtUpdate->error;
                 }
+                $stmtUpdate->close();
             }
+            $stmtCheck->close();
         }
     }
 
-    // Importar desde Excel
+    // Importar estudiantes desde Excel
     if (isset($_POST['importar_excel']) && isset($_FILES['archivo_excel'])) {
         $archivoTmp = $_FILES['archivo_excel']['tmp_name'];
         if (is_uploaded_file($archivoTmp)) {
-            $resultado = importarEstudiantesDesdeExcel($archivoTmp);
-            $mensajeImportacion = "Importación completada: {$resultado['importados']} importados, {$resultado['errores']} errores.";
+            try {
+                $reader = IOFactory::createReader('Xlsx');
+                $spreadsheet = $reader->load($archivoTmp);
+                $sheet = $spreadsheet->getActiveSheet();
+
+                $importados = 0;
+                $errores = 0;
+
+                for ($row = 2; $row <= $sheet->getHighestRow(); $row++) {
+                    $nombre = trim($sheet->getCell('A' . $row)->getValue());
+                    $correo = trim($sheet->getCell('B' . $row)->getValue());
+                    $carnet = trim($sheet->getCell('C' . $row)->getValue());
+
+                    if ($nombre !== '' && $correo !== '' && $carnet !== '' && ctype_digit($carnet)) {
+                        // Verificar duplicados en BD
+                        $stmtCheck = $conexion->prepare("SELECT id FROM estudiantes WHERE correo = ? OR carnet = ?");
+                        $stmtCheck->bind_param("ss", $correo, $carnet);
+                        $stmtCheck->execute();
+                        $stmtCheck->store_result();
+
+                        if ($stmtCheck->num_rows === 0) {
+                            $stmtInsert = $conexion->prepare("INSERT INTO estudiantes (nombre, correo, carnet) VALUES (?, ?, ?)");
+                            $stmtInsert->bind_param("sss", $nombre, $correo, $carnet);
+                            if ($stmtInsert->execute()) {
+                                $importados++;
+                            } else {
+                                $errores++;
+                            }
+                            $stmtInsert->close();
+                        } else {
+                            $errores++;
+                        }
+                        $stmtCheck->close();
+                    } else {
+                        $errores++;
+                    }
+                }
+                $mensajeImportacion = "Importación completada: $importados importados, $errores errores.";
+            } catch (Exception $e) {
+                $error = "Error al leer el archivo Excel: " . $e->getMessage();
+            }
         } else {
             $error = "Error al subir el archivo.";
         }
@@ -176,15 +172,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Eliminar estudiante
 if (isset($_GET['del_estudiante'])) {
     $id = (int)$_GET['del_estudiante'];
-    if (isset($_SESSION['estudiantes'][$id])) {
-        unset($_SESSION['estudiantes'][$id]);
-        $_SESSION['estudiantes'] = array_values($_SESSION['estudiantes']); // Reindexar array
+    $stmtDel = $conexion->prepare("DELETE FROM estudiantes WHERE id = ?");
+    $stmtDel->bind_param("i", $id);
+    if ($stmtDel->execute()) {
+        $mensajeImportacion = "Estudiante eliminado correctamente.";
     } else {
-        $error = "Estudiante no encontrado para eliminar.";
+        $error = "Error al eliminar estudiante: " . $stmtDel->error;
     }
+    $stmtDel->close();
 }
 
+// Obtener lista de estudiantes
+$result = $conexion->query("SELECT * FROM estudiantes ORDER BY nombre ASC");
+
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -229,6 +231,10 @@ if (isset($_GET['del_estudiante'])) {
 </nav>
 
 <div class="container">
+    <?php if ($mensajeConexion !== ''): ?>
+        <div class="alert alert-success"><?= htmlspecialchars($mensajeConexion) ?></div>
+    <?php endif; ?>
+
     <h2 class="mb-4">Gestión de Estudiantes</h2>
 
     <?php if ($error !== ''): ?>
@@ -255,7 +261,7 @@ if (isset($_GET['del_estudiante'])) {
         <div class="col-md-6">
             <div class="card p-3 mb-4">
                 <h5>Importar Estudiantes desde Excel</h5>
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" novalidate>
                     <input type="file" name="archivo_excel" class="form-control mb-2" accept=".xlsx" required>
                     <button type="submit" name="importar_excel" class="btn btn-success w-100">Importar</button>
                 </form>
@@ -266,24 +272,24 @@ if (isset($_GET['del_estudiante'])) {
 
     <h5>Lista de Estudiantes</h5>
     <ul class="list-group">
-        <?php if (!empty($_SESSION['estudiantes'])): ?>
-            <?php foreach ($_SESSION['estudiantes'] as $id => $e): ?>
+        <?php if ($result && $result->num_rows > 0): ?>
+            <?php while ($e = $result->fetch_assoc()): ?>
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                     <?= htmlspecialchars($e['nombre']) ?> - <?= htmlspecialchars($e['correo']) ?> - Carné: <?= htmlspecialchars($e['carnet']) ?>
                     <div>
                         <button class="btn btn-sm btn-gray me-2"
                                 data-bs-toggle="modal"
                                 data-bs-target="#editModal"
-                                data-id="<?= $id ?>"
+                                data-id="<?= $e['id'] ?>"
                                 data-nombre="<?= htmlspecialchars($e['nombre']) ?>"
                                 data-correo="<?= htmlspecialchars($e['correo']) ?>"
                                 data-carnet="<?= htmlspecialchars($e['carnet']) ?>">
                             Editar
                         </button>
-                        <a href="?del_estudiante=<?= $id ?>" class="btn btn-sm btn-danger" onclick="return confirm('¿Seguro que deseas eliminar este estudiante?');">X</a>
+                        <a href="?del_estudiante=<?= $e['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('¿Seguro que deseas eliminar este estudiante?');">X</a>
                     </div>
                 </li>
-            <?php endforeach; ?>
+            <?php endwhile; ?>
         <?php else: ?>
             <li class="list-group-item">No hay estudiantes registrados.</li>
         <?php endif; ?>

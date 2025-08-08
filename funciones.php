@@ -1,130 +1,130 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+
+// =====================
+// AGREGAR ESTUDIANTE
+// =====================
+function agregarEstudiante($nombre, $correo, $carnet) {
+    include 'Conexion.php';
+
+    // Validar que no exista correo o carnet duplicado
+    $check = $conexion->prepare("SELECT id FROM estudiantes WHERE correo = ? OR carnet = ?");
+    $check->bind_param("ss", $correo, $carnet);
+    $check->execute();
+    $check->store_result();
+
+    if ($check->num_rows > 0) {
+        return false; // Ya existe
+    }
+
+    $stmt = $conexion->prepare("INSERT INTO estudiantes (nombre, correo, carnet) VALUES (?, ?, ?)");
+    $stmt->bind_param("sss", $nombre, $correo, $carnet);
+
+    return $stmt->execute();
 }
 
-if (!isset($_SESSION['estudiantes'])) $_SESSION['estudiantes'] = [];
-if (!isset($_SESSION['jurados'])) $_SESSION['jurados'] = [];
-if (!isset($_SESSION['grupos_jurados'])) $_SESSION['grupos_jurados'] = [];
-if (!isset($_SESSION['grupos_estudiantes'])) $_SESSION['grupos_estudiantes'] = [];
+// =====================
+// AGREGAR JURADO
+// =====================
+function agregarJurado($nombre, $correo, $rol) {
+    include 'Conexion.php';
 
-// Jurado disponible (por id)
-if (!function_exists('juradoDisponible')) {
-    function juradoDisponible($id) {
-        foreach ($_SESSION['grupos_jurados'] as $grupo) {
-            if (in_array($id, $grupo['jurados'])) {
-                return false;
-            }
+    $check = $conexion->prepare("SELECT id FROM jurados WHERE correo = ?");
+    $check->bind_param("s", $correo);
+    $check->execute();
+    $check->store_result();
+
+    if ($check->num_rows > 0) {
+        return false; // Ya existe
+    }
+
+    $stmt = $conexion->prepare("INSERT INTO jurados (nombre, correo, rol) VALUES (?, ?, ?)");
+    $stmt->bind_param("sss", $nombre, $correo, $rol);
+
+    return $stmt->execute();
+}
+
+// =====================
+// CREAR GRUPO DE ESTUDIANTES
+// =====================
+function crearGrupoEstudiantes($grupo, $pre_especialidad, $dia, $hora, $aula, $estudiantes_ids) {
+    include 'Conexion.php';
+
+    // Validar que no se repita pre_especialidad
+    $check = $conexion->prepare("SELECT id FROM grupos_estudiantes WHERE pre_especialidad = ?");
+    $check->bind_param("s", $pre_especialidad);
+    $check->execute();
+    $check->store_result();
+    if ($check->num_rows > 0) return false;
+
+    // Validar número de grupo
+    $check2 = $conexion->prepare("SELECT id FROM grupos_estudiantes WHERE grupo = ?");
+    $check2->bind_param("s", $grupo);
+    $check2->execute();
+    $check2->store_result();
+    if ($check2->num_rows > 0) return false;
+
+    // Validar hora, día y aula
+    $check3 = $conexion->prepare("SELECT id FROM grupos_estudiantes WHERE dia = ? AND hora = ? AND aula = ?");
+    $check3->bind_param("sss", $dia, $hora, $aula);
+    $check3->execute();
+    $check3->store_result();
+    if ($check3->num_rows > 0) return false;
+
+    // Insertar grupo
+    $stmt = $conexion->prepare("INSERT INTO grupos_estudiantes (grupo, pre_especialidad, dia, hora, aula) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssss", $grupo, $pre_especialidad, $dia, $hora, $aula);
+    if ($stmt->execute()) {
+        $grupo_id = $conexion->insert_id;
+
+        // Insertar estudiantes al grupo
+        foreach ($estudiantes_ids as $est_id) {
+            $stmt2 = $conexion->prepare("INSERT INTO grupo_estudiante_detalle (grupo_id, estudiante_id) VALUES (?, ?)");
+            $stmt2->bind_param("ii", $grupo_id, $est_id);
+            $stmt2->execute();
         }
         return true;
     }
+    return false;
 }
 
-// Estudiante disponible (por id)
-if (!function_exists('estudianteDisponible')) {
-    function estudianteDisponible($id) {
-        foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
-            if (in_array($id, $grupo['estudiantes'])) {
-                return false;
-            }
+// =====================
+// CREAR GRUPO DE JURADOS
+// =====================
+function crearGrupoJurados($grupo_nombre, $jurados_ids) {
+    include 'Conexion.php';
+
+    $stmt = $conexion->prepare("INSERT INTO grupos_jurados (grupo_nombre) VALUES (?)");
+    $stmt->bind_param("s", $grupo_nombre);
+
+    if ($stmt->execute()) {
+        $grupo_id = $conexion->insert_id;
+        foreach ($jurados_ids as $jur_id) {
+            $stmt2 = $conexion->prepare("INSERT INTO grupo_jurado_detalle (grupo_id, jurado_id) VALUES (?, ?)");
+            $stmt2->bind_param("ii", $grupo_id, $jur_id);
+            $stmt2->execute();
         }
         return true;
     }
+    return false;
 }
 
-// Validar que pre especialidad no esté repetida
-if (!function_exists('preEspecialidadDisponible')) {
-    function preEspecialidadDisponible($pre_especialidad) {
-        foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
-            if (strcasecmp($grupo['pre_especialidad'], $pre_especialidad) === 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-}
+// =====================
+// IMPORTAR ESTUDIANTES DESDE EXCEL
+// =====================
+function importarEstudiantesDesdeExcel($rutaArchivo) {
+    require 'vendor/autoload.php';
+    $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+    $spreadsheet = $reader->load($rutaArchivo);
+    $hoja = $spreadsheet->getActiveSheet();
 
-// Validar que número de grupo no esté repetido
-if (!function_exists('grupoNumeroDisponible')) {
-    function grupoNumeroDisponible($grupo_numero) {
-        foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
-            if ($grupo['grupo'] === $grupo_numero) {
-                return false;
-            }
-        }
-        return true;
-    }
-}
+    foreach ($hoja->getRowIterator(2) as $fila) {
+        $nombre = trim($hoja->getCell('A' . $fila->getRowIndex())->getValue());
+        $correo = trim($hoja->getCell('B' . $fila->getRowIndex())->getValue());
+        $carnet = trim($hoja->getCell('C' . $fila->getRowIndex())->getValue());
 
-// Validar que día, hora y aula no estén repetidos juntos
-if (!function_exists('horaAulaDisponible')) {
-    function horaAulaDisponible($dia, $hora, $aula) {
-        foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
-            if ($grupo['dia'] === $dia && $grupo['hora'] === $hora && strcasecmp($grupo['aula'], $aula) === 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-}
-
-// Agregar estudiante manualmente
-if (!function_exists('agregarEstudiante')) {
-    function agregarEstudiante($nombre, $correo, $carnet) {
         if (!empty($nombre) && !empty($correo) && !empty($carnet) && ctype_digit($carnet)) {
-            foreach ($_SESSION['estudiantes'] as $est) {
-                if ($est['correo'] === $correo || $est['carnet'] === $carnet) {
-                    return false;
-                }
-            }
-            $_SESSION['estudiantes'][] = [
-                'nombre' => $nombre,
-                'correo' => $correo,
-                'carnet' => $carnet
-            ];
-            return true;
-        }
-        return false;
-    }
-}
-
-// Importar estudiantes desde Excel
-if (!function_exists('importarEstudiantesDesdeExcel')) {
-    function importarEstudiantesDesdeExcel($rutaArchivo) {
-        require 'vendor/autoload.php';
-        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
-        $spreadsheet = $reader->load($rutaArchivo);
-        $hoja = $spreadsheet->getActiveSheet();
-
-        foreach ($hoja->getRowIterator(2) as $fila) {
-            $nombre = trim($hoja->getCell('A' . $fila->getRowIndex())->getValue());
-            $correo = trim($hoja->getCell('B' . $fila->getRowIndex())->getValue());
-            $carnet = trim($hoja->getCell('C' . $fila->getRowIndex())->getValue());
-
-            if (!empty($nombre) && !empty($correo) && !empty($carnet) && ctype_digit($carnet)) {
-                agregarEstudiante($nombre, $correo, $carnet);
-            }
+            agregarEstudiante($nombre, $correo, $carnet);
         }
     }
 }
-
-// Descargar plantilla Excel
-if (!function_exists('descargarPlantillaExcel')) {
-    function descargarPlantillaExcel() {
-        require 'vendor/autoload.php';
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $sheet->setCellValue('A1', 'Nombre');
-        $sheet->setCellValue('B1', 'Correo');
-        $sheet->setCellValue('C1', 'Carné');
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="plantilla_estudiantes.xlsx"');
-        header('Cache-Control: max-age=0');
-
-        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
-        $writer->save('php://output');
-        exit;
-    }
-}
+?>
