@@ -1,6 +1,6 @@
 <?php
 include 'funciones.php';
-
+//prueba de actualización
 // Iniciar sesión si aún no ha sido iniciada
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
