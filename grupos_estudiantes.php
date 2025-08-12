@@ -1,6 +1,113 @@
-<?php 
+<?php
+session_start();
 include 'funciones.php';
+require_once 'Conexion.php';
+global $conexion;
 
+// Cargar jurados en sesión
+if (!isset($_SESSION['jurados']) || empty($_SESSION['jurados'])) {
+    $_SESSION['jurados'] = [];
+    $result = $conexion->query("SELECT * FROM jurados");
+    while ($row = $result->fetch_assoc()) {
+        $_SESSION['jurados'][$row['id']] = $row;
+    }
+}
+
+// Cargar estudiantes en sesión
+if (!isset($_SESSION['estudiantes']) || empty($_SESSION['estudiantes'])) {
+    $_SESSION['estudiantes'] = [];
+    $result = $conexion->query("SELECT * FROM estudiantes");
+    while ($row = $result->fetch_assoc()) {
+        $_SESSION['estudiantes'][$row['id']] = $row;
+    }
+}
+
+// Cargar grupos de jurados con jurados asignados
+if (!isset($_SESSION['grupos_jurados']) || empty($_SESSION['grupos_jurados'])) {
+    $_SESSION['grupos_jurados'] = [];
+    $result = $conexion->query("SELECT * FROM grupos_jurados");
+    while ($grupo = $result->fetch_assoc()) {
+        $jurados_asignados = [];
+        $stmt = $conexion->prepare("SELECT jurado_id FROM grupo_jurado_detalle WHERE grupo_id = ?");
+        $stmt->bind_param("i", $grupo['id']);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $jurados_asignados[] = $row['jurado_id'];
+        }
+        $stmt->close();
+
+        $_SESSION['grupos_jurados'][$grupo['id']] = [
+            'grupo_nombre' => $grupo['grupo_nombre'],
+            'jurados' => $jurados_asignados,
+            'grupos_asignados' => 0,
+        ];
+    }
+}
+
+// Inicializar grupos de estudiantes en sesión
+if (!isset($_SESSION['grupos_estudiantes'])) {
+    $_SESSION['grupos_estudiantes'] = [];
+}
+
+// Actualizar contador de grupos asignados a jurados
+foreach ($_SESSION['grupos_jurados'] as $id => &$grupo_jurado) {
+    $grupo_jurado['grupos_asignados'] = 0;
+}
+unset($grupo_jurado);
+
+foreach ($_SESSION['grupos_estudiantes'] as $grupo_estudiante) {
+    $gid = $grupo_estudiante['grupo_jurado_id'];
+    if (isset($_SESSION['grupos_jurados'][$gid])) {
+        $_SESSION['grupos_jurados'][$gid]['grupos_asignados']++;
+    }
+}
+
+// Funciones para validar disponibilidad
+
+function estudianteDisponible($id) {
+    if (!isset($_SESSION['grupos_estudiantes'])) return true;
+    foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
+        if (in_array($id, $grupo['estudiantes'])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function preEspecialidadDisponible($pre_especialidad) {
+    if (!isset($_SESSION['grupos_estudiantes'])) return true;
+    foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
+        if (strcasecmp($grupo['pre_especialidad'], $pre_especialidad) === 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function grupoNumeroDisponible($grupo_num) {
+    if (!isset($_SESSION['grupos_estudiantes'])) return true;
+    foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
+        if (strcasecmp($grupo['grupo'], $grupo_num) === 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function horaAulaDisponible($dia, $hora, $aula) {
+    if (!isset($_SESSION['grupos_estudiantes'])) return true;
+    foreach ($_SESSION['grupos_estudiantes'] as $grupo) {
+        if ($grupo['dia'] === $dia && $grupo['hora'] === $hora && strcasecmp($grupo['aula'], $aula) === 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+$error = null;
+
+// Crear nuevo grupo de estudiantes
 if (isset($_POST['add_grupo_estudiantes'])) {
     $grupo_jurado_id = $_POST['grupo_jurado_id'];
     $estudiantes_ids = $_POST['estudiantes_ids'] ?? [];
@@ -9,13 +116,10 @@ if (isset($_POST['add_grupo_estudiantes'])) {
     $hora = trim($_POST['hora']);
     $aula = trim($_POST['aula']);
     $grupo = trim($_POST['grupo']);
-    $error = null;
 
-    // Validaciones
     if (count($estudiantes_ids) < 2 || count($estudiantes_ids) > 3) {
         $error = "Un grupo de estudiantes debe tener entre 2 y 3 miembros.";
     } else {
-        // Validar que estudiantes estén disponibles
         foreach ($estudiantes_ids as $id) {
             if (!estudianteDisponible($id)) {
                 $error = "Un estudiante ya está asignado a otro grupo.";
@@ -27,15 +131,12 @@ if (isset($_POST['add_grupo_estudiantes'])) {
     if (!$error && !preEspecialidadDisponible($pre_especialidad)) {
         $error = "Ya existe un grupo con la misma Pre especialidad.";
     }
-
     if (!$error && !grupoNumeroDisponible($grupo)) {
         $error = "Ya existe un grupo con ese número asignado.";
     }
-
     if (!$error && !horaAulaDisponible($dia, $hora, $aula)) {
         $error = "Ya existe un grupo asignado a ese día, hora y aula.";
     }
-
     if (!$error) {
         if (isset($_SESSION['grupos_jurados'][$grupo_jurado_id]) && $_SESSION['grupos_jurados'][$grupo_jurado_id]['grupos_asignados'] < 3) {
             $_SESSION['grupos_estudiantes'][] = [
@@ -54,7 +155,7 @@ if (isset($_POST['add_grupo_estudiantes'])) {
     }
 }
 
-// Eliminar grupo
+// Eliminar grupo de estudiantes
 if (isset($_GET['del_grupo_estudiante'])) {
     $id = $_GET['del_grupo_estudiante'];
     $grupo_jurado_id = $_SESSION['grupos_estudiantes'][$id]['grupo_jurado_id'] ?? null;
@@ -68,9 +169,9 @@ if (isset($_GET['del_grupo_estudiante'])) {
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Grupos de Estudiantes</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
     <style>
         table {
             width: 100%;
@@ -120,7 +221,9 @@ if (isset($_GET['del_grupo_estudiante'])) {
 
 <div class="container mt-4">
     <h2>Grupos de Estudiantes</h2>
-    <?php if (isset($error) && $error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($error): ?>
+        <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+    <?php endif; ?>
 
     <form method="POST" class="card p-3 mb-4">
         <label>Grupo de Jurados</label>
@@ -150,7 +253,10 @@ if (isset($_GET['del_grupo_estudiante'])) {
         <div class="mb-2" style="max-height:150px; overflow-y:auto;">
             <?php foreach ($_SESSION['estudiantes'] as $id => $e): ?>
                 <?php if (estudianteDisponible($id)): ?>
-                    <div><input type="checkbox" name="estudiantes_ids[]" value="<?= $id ?>"> <?= htmlspecialchars($e['nombre']) ?> (Carné: <?= htmlspecialchars($e['carnet']) ?>)</div>
+                    <div>
+                        <input type="checkbox" name="estudiantes_ids[]" value="<?= $id ?>"> 
+                        <?= htmlspecialchars($e['nombre']) ?> (Carné: <?= htmlspecialchars($e['carnet']) ?>)
+                    </div>
                 <?php endif; ?>
             <?php endforeach; ?>
         </div>
@@ -199,8 +305,8 @@ if (isset($_GET['del_grupo_estudiante'])) {
                                 $e = $_SESSION['estudiantes'][$eid] ?? null;
                                 if ($e) {
                                     echo "Carné: " . htmlspecialchars($e['carnet']) . "<br>" .
-                                        htmlspecialchars($e['nombre']) . "<br>" .
-                                        htmlspecialchars($e['correo']) . "<br><hr style='margin:4px 0;'>";
+                                         htmlspecialchars($e['nombre']) . "<br>" .
+                                         htmlspecialchars($e['correo']) . "<br><hr style='margin:4px 0;'>";
                                 }
                             }
                         ?>
@@ -210,9 +316,15 @@ if (isset($_GET['del_grupo_estudiante'])) {
                     </td>
                 </tr>
             <?php endforeach; ?>
+            <?php if (empty($_SESSION['grupos_estudiantes'])): ?>
+                <tr><td colspan="8" class="text-center"><em>No hay grupos de estudiantes registrados.</em></td></tr>
+            <?php endif; ?>
         </tbody>
     </table>
 </div>
 </body>
 </html>
+
+
+
 

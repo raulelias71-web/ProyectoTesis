@@ -12,7 +12,7 @@ if ($conn->connect_error) {
 
 // función que verifica si un jurado ya está asignado a otro grupo distinto al que se está editando
 function juradoAsignadoDistintoGrupo($conn, $idJurado, $grupoEditandoId = null) {
-    $count = 0; // inicializar para evitar el warning
+    $count = 0;
 
     if ($grupoEditandoId === null) {
         $sql = "SELECT COUNT(*) FROM grupos_jurados WHERE jurado1_id = ? OR jurado2_id = ? OR jurado3_id = ?";
@@ -192,6 +192,8 @@ if ($result) {
     </style>
 </head>
 <body class="bg-light">
+<?php include 'index.php'; // Aquí está el menú igual que en tu segundo código ?>
+
 <div class="container mt-4">
     <h2><?= $grupoEditandoId !== null ? "Editar Grupo #".$grupoEditandoId : "Crear Grupo de Jurados" ?></h2>
 
