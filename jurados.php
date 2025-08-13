@@ -3,8 +3,8 @@ include 'funciones.php';
 session_start();
 
 // Incluir conexión
-require_once 'Conexion.php'; // Esto define $conexion
-$conn = $conexion; // Para mantener la variable $conn
+require_once 'Conexion.php'; 
+$conn = $conexion; 
 
 // Agregar jurado
 if (isset($_POST['add_jurado'])) {
@@ -52,10 +52,45 @@ $jurados = $result->fetch_all(MYSQLI_ASSOC);
 <head>
     <meta charset="UTF-8">
     <title>Jurados</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        .bg-ocre { background-color: #611010ff !important; }
+        .btn-ocre {
+            background-color: #611010ff !important;
+            border-color: #611010ff !important;
+            color: #fff !important;
+        }
+        .btn-ocre:hover {
+            background-color: #4a0c0c !important;
+            border-color: #4a0c0c !important;
+        }
+        .btn-gray {
+            background-color: #6c757d !important;
+            border-color: #6c757d !important;
+            color: #fff !important;
+        }
+        .btn-gray:hover {
+            background-color: #5a6268 !important;
+            border-color: #545b62 !important;
+        }
+    </style>
 </head>
 <body class="bg-light">
-<?php include 'index.php'; ?>
+
+<!-- Barra de navegación -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-ocre mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="index.php">Gestión de Grupos</a>
+    <div>
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link" href="estudiantes.php">Estudiantes</a></li>
+        <li class="nav-item"><a class="nav-link" href="jurados.php">Jurados</a></li>
+        <li class="nav-item"><a class="nav-link" href="grupos_jurados.php">Grupos de Jurados</a></li>
+        <li class="nav-item"><a class="nav-link" href="grupos_estudiantes.php">Grupos de Estudiantes</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
 
 <div class="container mt-4">
     <h2>Gestión de Jurados</h2>
@@ -69,7 +104,7 @@ $jurados = $result->fetch_all(MYSQLI_ASSOC);
                 <option value="Especialista">Especialista</option>
                 <option value="Investigador">Investigador</option>
             </select>
-            <button type="submit" name="add_jurado" class="btn btn-success w-100">Agregar</button>
+            <button type="submit" name="add_jurado" class="btn btn-ocre w-100">Agregar</button>
         </form>
     </div>
 
