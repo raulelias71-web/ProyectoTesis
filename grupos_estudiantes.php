@@ -100,10 +100,14 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
     $grupo = trim($_POST['grupo']);
     $edit_id = $_POST['edit_id'] ?? null;
 
-    if (count($estudiantes_ids) < 2 || count($estudiantes_ids) > 3) $error = "Un grupo de estudiantes debe tener entre 2 y 3 miembros.";
-    else {
+    if (count($estudiantes_ids) < 2 || count($estudiantes_ids) > 3) {
+        $error = "Un grupo de estudiantes debe tener entre 2 y 3 miembros.";
+    } else {
         foreach ($estudiantes_ids as $id) {
-            if (!estudianteDisponible($id, $edit_id)) { $error = "Un estudiante ya está asignado a otro grupo."; break; }
+            if (!estudianteDisponible($id, $edit_id)) {
+                $error = "Un estudiante ya está asignado a otro grupo.";
+                break;
+            }
         }
     }
     if (!$error && !preEspecialidadDisponible($pre_especialidad, $edit_id)) $error = "Ya existe un grupo con la misma Pre especialidad.";
@@ -139,13 +143,28 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
             $_SESSION['grupos_jurados'][$grupo_jurado_id]['grupos_asignados']++;
         }
     }
+
+    // Mantener datos si hay error
+    if ($error && !$edit_group) {
+        $edit_group = [
+            'grupo_jurado_id' => $_POST['grupo_jurado_id'] ?? '',
+            'pre_especialidad' => $_POST['pre_especialidad'] ?? '',
+            'dia' => $_POST['dia'] ?? '',
+            'hora' => $_POST['hora'] ?? '',
+            'aula' => $_POST['aula'] ?? '',
+            'grupo' => $_POST['grupo'] ?? '',
+            'estudiantes' => $_POST['estudiantes_ids'] ?? []
+        ];
+    }
 }
 
 // --- ELIMINAR ---
 if (isset($_GET['del_grupo_estudiante'])) {
     $id = $_GET['del_grupo_estudiante'];
     $gid = $_SESSION['grupos_estudiantes'][$id]['grupo_jurado_id'] ?? null;
-    if ($gid !== null) $_SESSION['grupos_jurados'][$gid]['grupos_asignados']--;
+    if ($gid !== null && isset($_SESSION['grupos_jurados'][$gid])) {
+        $_SESSION['grupos_jurados'][$gid]['grupos_asignados'] = max(0, $_SESSION['grupos_jurados'][$gid]['grupos_asignados'] - 1);
+    }
     unset($_SESSION['grupos_estudiantes'][$id]);
     $_SESSION['grupos_estudiantes'] = array_values($_SESSION['grupos_estudiantes']);
 }
@@ -197,7 +216,7 @@ tbody tr:hover { background-color:#f1d4d4; }
 
 <!-- FORMULARIO CREAR / EDITAR -->
 <form method="POST" class="card p-3 mb-4">
-<input type="hidden" name="edit_id" value="<?= $edit_group['id'] ?? '' ?>">
+<input type="hidden" name="edit_id" value="<?= $edit_id ?? '' ?>">
 <label>Grupo de Jurados</label>
 <select name="grupo_jurado_id" class="form-select mb-2" required>
 <option value="">Seleccione...</option>
@@ -226,8 +245,11 @@ Grupo Jurado <?= $g['grupo_nombre'] ?> (<?= $g['grupos_asignados'] ?>/3)
 <label>Estudiantes (2-3)</label>
 <div class="mb-2" style="max-height:150px; overflow-y:auto;">
 <?php foreach ($_SESSION['estudiantes'] as $id => $e): ?>
-<?php $checked = $edit_group && in_array($id,$edit_group['estudiantes']) ? 'checked' : ''; ?>
-<?php if (!$edit_group && !estudianteDisponible($id)) continue; ?>
+<?php 
+$checked = $edit_group && in_array($id, $edit_group['estudiantes']) ? 'checked' : '';
+if (!$edit_group && !estudianteDisponible($id)) continue;
+if ($edit_group && !in_array($id, $edit_group['estudiantes']) && !estudianteDisponible($id)) continue;
+?>
 <div>
 <input type="checkbox" name="estudiantes_ids[]" value="<?= $id ?>" <?= $checked ?>>
 <?= htmlspecialchars($e['nombre']) ?> (Carné: <?= htmlspecialchars($e['carnet']) ?>)
@@ -301,6 +323,5 @@ if ($e) echo "<strong>Carné:</strong> ".htmlspecialchars($e['carnet'])."<br>".h
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
 
 
