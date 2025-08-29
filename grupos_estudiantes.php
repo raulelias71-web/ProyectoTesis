@@ -5,10 +5,12 @@ require_once 'Conexion.php';
 global $conexion;
 
 // --- FUNCIONES BD: GUARDAR, ACTUALIZAR Y ELIMINAR ---
-function guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes) {
+function guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes, ) {
     global $conexion;
-    $stmt = $conexion->prepare("INSERT INTO grupos_estudiantes (grupo_jurado_id, pre_especialidad, dia, hora, aula, grupo) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("isssss", $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo);
+    $stmt = $conexion->prepare("INSERT INTO grupos_estudiantes (grupo_jurado_id, pre_especialidad, dia, hora, aula, grupo, tema) VALUES (?, ?, ?, ?, ?, ?, ?)");
+
+    $stmt->bind_param("issssss", $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $tema);
+
     if ($stmt->execute()) {
         $id = $stmt->insert_id;
         $stmt_det = $conexion->prepare("INSERT INTO grupos_estudiantes_detalle (grupo_estudiante_id, estudiante_id) VALUES (?, ?)");
@@ -28,8 +30,10 @@ function actualizarGrupoBD($id, $grupo_jurado_id, $pre_especialidad, $dia, $hora
     $id = intval($id); // <-- Convertir a entero
 
     // Actualizar grupo principal
-    $stmt = $conexion->prepare("UPDATE grupos_estudiantes SET grupo_jurado_id=?, pre_especialidad=?, dia=?, hora=?, aula=?, grupo=? WHERE id=?");
-    $stmt->bind_param("isssssi", $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $id);
+    $stmt = $conexion->prepare("UPDATE grupos_estudiantes SET grupo_jurado_id=?, pre_especialidad=?, dia=?, hora=?, aula=?, grupo=?, tema=? WHERE id=?");
+
+    $stmt->bind_param("issssssi", $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $tema, $id);
+
 
     if ($stmt->execute()) {
         // Primero eliminamos los detalles antiguos
@@ -127,7 +131,8 @@ if (!isset($_SESSION['grupos_estudiantes']) || empty($_SESSION['grupos_estudiant
             'dia' => $grupo['dia'],
             'hora' => $grupo['hora'],
             'aula' => $grupo['aula'],
-            'grupo' => $grupo['grupo'],
+            'grupo' => $grupo['grupo'], 
+            'tema' => $grupo['tema'],
             'estudiantes' => $estudiantes
         ];
     }
@@ -189,7 +194,9 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
     $dia = trim($_POST['dia']);
     $hora = trim($_POST['hora']);
     $aula = trim($_POST['aula']);
-    $grupo = trim($_POST['grupo']);
+    $grupo = trim($_POST['grupo']); 
+    $tema = trim($_POST['tema'] ?? '');
+
     $edit_id = intval($_POST['edit_id'] ?? 0); // <-- asegura que sea entero
 
     // Validaciones comunes
@@ -220,7 +227,9 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
                         'dia' => $dia,
                         'hora' => $hora,
                         'aula' => $aula,
-                        'grupo' => $grupo
+                        'grupo' => $grupo, 
+                        'tema' => $tema 
+                
                     ];
                     $_SESSION['grupos_jurados'][$grupo_jurado_id]['grupos_asignados']++;
                     $_SESSION['mensaje_exito'] = "Grupo creado exitosamente.";
@@ -244,7 +253,8 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
                         'dia' => $dia,
                         'hora' => $hora,
                         'aula' => $aula,
-                        'grupo' => $grupo
+                        'grupo' => $grupo,
+                        'tema' => $tema
                     ];
                     $_SESSION['grupos_jurados'][$grupo_jurado_id]['grupos_asignados']++;
 
@@ -268,7 +278,8 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
             'dia' => $_POST['dia'] ?? '',
             'hora' => $_POST['hora'] ?? '',
             'aula' => $_POST['aula'] ?? '',
-            'grupo' => $_POST['grupo'] ?? '',
+            'grupo' => $_POST['grupo'] ?? '', 
+            'tema' => $_POST['tema'] ?? '',
             'estudiantes' => $_POST['estudiantes_ids'] ?? []
         ];
     }
@@ -306,7 +317,8 @@ if (isset($_GET['edit_grupo_estudiante'])) {
             'dia' => $grupo['dia'],
             'hora' => $grupo['hora'],
             'aula' => $grupo['aula'],
-            'grupo' => $grupo['grupo'],
+            'grupo' => $grupo['grupo'], 
+            'tema' => $grupo['tema'],
             'estudiantes' => []
         ];
 
@@ -387,6 +399,9 @@ Grupo Jurado <?= $g['grupo_nombre'] ?> (<?= $g['grupos_asignados'] ?>/3)
 <label>Pre especialidad</label>
 <input type="text" name="pre_especialidad" class="form-control mb-2" required value="<?= $edit_group['pre_especialidad'] ?? '' ?>">
 
+<label>Tema</label>
+<input type="text" name="tema" class="form-control mb-2" value="<?= $edit_group['tema'] ?? '' ?>">
+
 <label>Día</label>
 <input type="date" name="dia" class="form-control mb-2" required value="<?= $edit_group['dia'] ?? '' ?>">
 
@@ -431,10 +446,12 @@ if ($edit_group && !in_array($id, $edit_group['estudiantes']) && !estudianteDisp
 <th>Hora</th>
 <th>AULA</th>
 <th>Grupo</th>
+<th>Tema</th>
 <th>Jurados</th>
 <th>Estudiantes</th>
 <th>Acciones</th>
 </tr>
+
 </thead>
 <tbody>
 <?php $contador = 1; ?>
@@ -445,6 +462,8 @@ if ($edit_group && !in_array($id, $edit_group['estudiantes']) && !estudianteDisp
 <td><?= htmlspecialchars($g['hora']) ?></td>
 <td><?= htmlspecialchars($g['aula']) ?></td>
 <td><?= htmlspecialchars($g['grupo']) ?></td>
+<td><?= htmlspecialchars($g['tema'] ?? '') ?></td>
+
 <td>
 <strong>Grupo Jurado #<?= $contador ?></strong>
 <ul class="mb-0">
