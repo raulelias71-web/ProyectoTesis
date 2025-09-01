@@ -88,6 +88,11 @@ if (isset($_GET['grupo_id']) && isset($grupos_estudiantes[$_GET['grupo_id']])) {
 .card-ocre th, .card-ocre td { border:1px solid #611010ff; padding:8px 12px; text-align:left; }
 .card-ocre thead { background-color:#611010ff; color:white; }
 .card-ocre ul { padding-left:20px; }
+#mensaje-final {
+    font-weight: bold;
+    font-size: 1.2em;
+    margin-top: 15px;
+}
 </style>
 </head>
 <body class="bg-light">
@@ -148,42 +153,15 @@ if (isset($_GET['grupo_id']) && isset($grupos_estudiantes[$_GET['grupo_id']])) {
 </tr>
 </thead>
 <tbody>
-<tr>
-<td>Formulación del problema</td>
-<td>10%</td>
-<td><input type="number" class="form-control nota-doc" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Objetivos y justificación de la investigación</td>
-<td>10%</td>
-<td><input type="number" class="form-control nota-doc" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Marco de referencia</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-doc" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Diseño de la solución</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-doc" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Análisis e interpretación de datos</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-doc" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Conclusiones y recomendaciones propuestas</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-doc" value="0" max="10" step="0.1"></td>
-</tr>
+<tr><td>Formulación del problema</td><td>10%</td><td><input type="number" class="form-control nota-doc" max="10" step="0.1"></td></tr>
+<tr><td>Objetivos y justificación de la investigación</td><td>10%</td><td><input type="number" class="form-control nota-doc" max="10" step="0.1"></td></tr>
+<tr><td>Marco de referencia</td><td>20%</td><td><input type="number" class="form-control nota-doc" max="10" step="0.1"></td></tr>
+<tr><td>Diseño de la solución</td><td>20%</td><td><input type="number" class="form-control nota-doc" max="10" step="0.1"></td></tr>
+<tr><td>Análisis e interpretación de datos</td><td>20%</td><td><input type="number" class="form-control nota-doc" max="10" step="0.1"></td></tr>
+<tr><td>Conclusiones y recomendaciones propuestas</td><td>20%</td><td><input type="number" class="form-control nota-doc" max="10" step="0.1"></td></tr>
 </tbody>
 <tfoot class="table-light">
-<tr>
-<th colspan="2">TOTAL</th>
-<th><input type="text" class="form-control" id="total-doc" readonly></th>
-</tr>
+<tr><th colspan="2">TOTAL</th><th><input type="text" class="form-control" id="total-doc" readonly></th></tr>
 </tfoot>
 </table>
 
@@ -197,40 +175,22 @@ if (isset($_GET['grupo_id']) && isset($grupos_estudiantes[$_GET['grupo_id']])) {
 </tr>
 </thead>
 <tbody>
-<tr>
-<td>Dominio de la temática</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-oral" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Claridad</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-oral" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Síntesis</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-oral" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Seguridad en respuestas</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-oral" value="0" max="10" step="0.1"></td>
-</tr>
-<tr>
-<td>Proyección de la universidad</td>
-<td>20%</td>
-<td><input type="number" class="form-control nota-oral" value="0" max="10" step="0.1"></td>
-</tr>
+<tr><td><strong>1. DOMINIO DE LA TEMÁTICA:</strong> Denota que conoce la temática a tratar; orden y claridad en la exposición de ideas y una secuencia lógica en sus planteamiento; trascendentales de lo expuesto en el documento; complementándolo y enriqueciéndolo.</td><td>20%</td><td><input type="number" class="form-control nota-oral" max="10" step="0.1"></td></tr>
+<tr><td><strong>2. CLARIDAD:</strong> Que la exposición sea dada en forma coherente y ordenada. Conceptos dados en forma sencilla, con lenguaje técnico apropiado y de preferencia ejemplificados.</td><td>20%</td><td><input type="number" class="form-control nota-oral" max="10" step="0.1"></td></tr>
+<tr><td><strong>3. SÍNTESIS:</strong> Capacidad de plantear los aspectos más relevantes acerca de lo que se cuestiona. Utilización del tiempo de manera apropiada sin ser demasiado breve, ni muy extenso en sus respuestas.</td><td>20%</td><td><input type="number" class="form-control nota-oral" max="10" step="0.1"></td></tr>
+<tr><td><strong>4. SEGURIDAD EN RESPUESTAS:</strong> Capacidad de dar respuestas a las interrogantes planteadas sin titubeos en un lapso de tiempo apropiado.</td><td>20%</td><td><input type="number" class="form-control nota-oral" max="10" step="0.1"></td></tr>
+<tr><td><strong>5. PROYECCIÓN DE LA UNIVERSIDAD:</strong> Planteamiento de soluciones factibles de aplicarse que contribuyan al bienestar económico y social de la comunidad o que se refiere al trabajo. Aporte o sugerencias a la Universidad para mejorar su calidad académica, así como una mayor y mejor vinculación de esta con la realidad salvadoreña.</td><td>20%</td><td><input type="number" class="form-control nota-oral" max="10" step="0.1"></td></tr>
 </tbody>
 <tfoot class="table-light">
-<tr>
-<th colspan="2">TOTAL</th>
-<th><input type="text" class="form-control" id="total-oral" readonly></th>
-</tr>
+<tr><th colspan="2">TOTAL</th><th><input type="text" class="form-control" id="total-oral" readonly></th></tr>
 </tfoot>
 </table>
-</div>
+
+<div id="mensaje-final"></div> 
+Para aprobar el trabajo de Graduación, el dictamen debe ser unánime por todos los miembros del Jurado. Con uno de los Jurados que haya dictaminado como Reprobado, de acuerdo a su calificación del dictamen final, será Reprobado.
+</div> 
+
+
 
 <?php else: ?>
 <p class="text-center"><em>Seleccione un grupo para ver el detalle.</em></p>
@@ -254,25 +214,72 @@ if (isset($_GET['grupo_id']) && isset($grupos_estudiantes[$_GET['grupo_id']])) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Calcular totales ponderados
 const porcentajesDoc = [10,10,20,20,20,20];
 const porcentajesOral = [20,20,20,20,20];
 
-function calcularTotal(selector, porcentajes, totalId){
-    const notas = document.querySelectorAll(selector);
-    let total = 0;
-    notas.forEach((input,i)=>{
-        const valor = parseFloat(input.value)||0;
-        total += (valor*porcentajes[i]/100);
+function calcularTotales(){
+    let totalDoc = 0, totalOral = 0;
+    let valid = true;
+
+    document.querySelectorAll('.nota-doc').forEach((input,i)=>{
+        const valor = input.value.trim();
+        if(valor===''){ 
+            valid = false; 
+        } else {
+            totalDoc += parseFloat(valor)*(porcentajesDoc[i]/100);
+        }
     });
-    document.getElementById(totalId).value = total.toFixed(2);
+
+    document.querySelectorAll('.nota-oral').forEach((input,i)=>{
+        const valor = input.value.trim();
+        if(valor===''){ 
+            valid = false; 
+        } else {
+            totalOral += parseFloat(valor)*(porcentajesOral[i]/100);
+        }
+    });
+
+    const mensaje = document.getElementById('mensaje-final');
+
+    if(valid){
+        document.getElementById('total-doc').value = totalDoc.toFixed(2);
+        document.getElementById('total-oral').value = totalOral.toFixed(2);
+        const final = (totalDoc + totalOral)/2;
+        if(final>=7){
+            mensaje.innerHTML = `<div class="alert alert-success">✅ Aprobado con nota final: ${final.toFixed(2)}</div>`;
+        } else {
+            mensaje.innerHTML = `<div class="alert alert-danger">❌ Reprobado con nota final: ${final.toFixed(2)}</div>`;
+        }
+    } else {
+        document.getElementById('total-doc').value = '';
+        document.getElementById('total-oral').value = '';
+        mensaje.innerHTML = `<div class="alert alert-warning">⚠️ Todas las casillas deben completarse antes de calcular.</div>`;
+    }
 }
 
-document.querySelectorAll('.nota-doc').forEach(input=>{
-    input.addEventListener('input',()=>calcularTotal('.nota-doc',porcentajesDoc,'total-doc'));
+// Mover foco al siguiente input con Enter solo si tiene valor
+function handleEnterMove(e){
+    if(e.key==='Enter'){
+        e.preventDefault();
+        if(e.target.value.trim()==='') return; // no permite pasar si está vacía
+        const inputs = Array.from(document.querySelectorAll('.nota-doc, .nota-oral'));
+        const index = inputs.indexOf(e.target);
+        if(index >= 0 && index < inputs.length-1){
+            inputs[index+1].focus();
+        }
+    }
+}
+
+// Limpiar todos los inputs al cargar
+document.addEventListener('DOMContentLoaded', ()=>{
+    document.querySelectorAll('.nota-doc, .nota-oral').forEach(input=>{
+        input.value = '';
+    });
 });
-document.querySelectorAll('.nota-oral').forEach(input=>{
-    input.addEventListener('input',()=>calcularTotal('.nota-oral',porcentajesOral,'total-oral'));
+
+document.querySelectorAll('.nota-doc, .nota-oral').forEach(input=>{
+    input.addEventListener('input', calcularTotales);
+    input.addEventListener('keypress', handleEnterMove);
 });
 </script>
 </body>
