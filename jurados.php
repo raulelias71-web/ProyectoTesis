@@ -1,10 +1,50 @@
 <?php
-include 'funciones.php'; 
+ob_start(); // Evitar salida accidental
 session_start();
+include 'funciones.php'; 
 
-// Incluir conexión
+// --- CONEXIÓN A BASE DE DATOS ---
 require_once 'Conexion.php'; 
-$conn = $conexion; 
+$conn = $conexion;
+
+// Cargar PhpSpreadsheet
+require 'vendor/autoload.php';
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+// Variables de mensajes
+$error = '';
+$mensajeImportacion = '';
+
+// Función para descargar plantilla Excel de jurados
+function descargarPlantillaJurados() {
+    if (ob_get_contents()) ob_end_clean(); // Limpiar buffer de salida
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+
+    // Encabezados
+    $sheet->setCellValue('A1', 'Nombre');
+    $sheet->setCellValue('B1', 'Correo');
+    $sheet->setCellValue('C1', 'Rol');
+
+    // Negrita encabezados
+    $sheet->getStyle('A1:C1')->getFont()->setBold(true);
+
+    // Cabeceras
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="plantilla_jurados.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+// Descargar plantilla
+if (isset($_GET['descargar_plantilla'])) {
+    descargarPlantillaJurados();
+}
 
 // --- EDITAR JURADO ---
 $edit_jurado = null;
@@ -18,105 +58,142 @@ if (isset($_GET['edit_jurado'])) {
     $stmt->close();
 }
 
-// Agregar jurado
-if (isset($_POST['add_jurado'])) {
-    $nombre = trim($_POST['nombre_jurado']);
-    $correo = trim($_POST['correo_jurado']);
-    $rol    = trim($_POST['rol_jurado']);
+// Agregar / Editar jurado
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Agregar jurado
+    if (isset($_POST['add_jurado'])) {
+        $nombre = trim($_POST['nombre_jurado']);
+        $correo = trim($_POST['correo_jurado']);
+        $rol    = trim($_POST['rol_jurado']);
 
-    // Verificar si el correo ya existe
-    $stmt = $conn->prepare("SELECT id FROM jurados WHERE correo = ?");
-    $stmt->bind_param("s", $correo);
-    $stmt->execute();
-    $stmt->store_result();
+        $stmtCheck = $conn->prepare("SELECT id FROM jurados WHERE correo = ?");
+        $stmtCheck->bind_param("s", $correo);
+        $stmtCheck->execute();
+        $stmtCheck->store_result();
 
-    if ($stmt->num_rows > 0) {
-        echo "<div class='alert alert-warning text-center'>⚠ El correo ya está registrado.</div>";
-    } else {
-        // Insertar nuevo jurado
-        $stmt = $conn->prepare("INSERT INTO jurados (nombre, correo, rol) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $nombre, $correo, $rol);
-        if ($stmt->execute()) {
-            echo "<div class='alert alert-success text-center'>✅ Jurado agregado correctamente.</div>";
+        if ($stmtCheck->num_rows > 0) {
+            $error = "El correo ya está registrado.";
         } else {
-            echo "<div class='alert alert-danger text-center'>❌ Error al guardar: " . $conn->error . "</div>";
+            $stmtInsert = $conn->prepare("INSERT INTO jurados (nombre, correo, rol) VALUES (?, ?, ?)");
+            $stmtInsert->bind_param("sss", $nombre, $correo, $rol);
+            if ($stmtInsert->execute()) {
+                $mensajeImportacion = "Jurado agregado correctamente.";
+            } else {
+                $error = "Error al agregar jurado: " . $stmtInsert->error;
+            }
+            $stmtInsert->close();
+        }
+        $stmtCheck->close();
+    }
+
+    // Editar jurado
+    if (isset($_POST['edit_jurado'])) {
+        $id = intval($_POST['id_jurado']);
+        $nombre = trim($_POST['nombre_jurado']);
+        $correo = trim($_POST['correo_jurado']);
+        $rol    = trim($_POST['rol_jurado']);
+
+        $stmtCheck = $conn->prepare("SELECT id FROM jurados WHERE correo = ? AND id != ?");
+        $stmtCheck->bind_param("si", $correo, $id);
+        $stmtCheck->execute();
+        $stmtCheck->store_result();
+
+        if ($stmtCheck->num_rows > 0) {
+            $error = "El correo ya está registrado en otro jurado.";
+        } else {
+            $stmtUpdate = $conn->prepare("UPDATE jurados SET nombre = ?, correo = ?, rol = ? WHERE id = ?");
+            $stmtUpdate->bind_param("sssi", $nombre, $correo, $rol, $id);
+            if ($stmtUpdate->execute()) {
+                $mensajeImportacion = "Jurado actualizado correctamente.";
+            } else {
+                $error = "Error al actualizar jurado: " . $stmtUpdate->error;
+            }
+            $stmtUpdate->close();
+        }
+        $stmtCheck->close();
+    }
+
+    // Importar jurados desde Excel
+    if (isset($_POST['importar_excel']) && isset($_FILES['archivo_excel'])) {
+        $archivoTmp = $_FILES['archivo_excel']['tmp_name'];
+        if (is_uploaded_file($archivoTmp)) {
+            try {
+                $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+                $spreadsheet = $reader->load($archivoTmp);
+                $sheet = $spreadsheet->getActiveSheet();
+
+                $importados = 0;
+                $errores = 0;
+
+                for ($row = 2; $row <= $sheet->getHighestRow(); $row++) {
+                    $nombre = trim($sheet->getCell('A' . $row)->getValue());
+                    $correo = trim($sheet->getCell('B' . $row)->getValue());
+                    $rol    = trim($sheet->getCell('C' . $row)->getValue());
+
+                    if ($nombre !== '' && $correo !== '' && $rol !== '') {
+                        $stmtCheck = $conn->prepare("SELECT id FROM jurados WHERE correo = ?");
+                        $stmtCheck->bind_param("s", $correo);
+                        $stmtCheck->execute();
+                        $stmtCheck->store_result();
+
+                        if ($stmtCheck->num_rows === 0) {
+                            $stmtInsert = $conn->prepare("INSERT INTO jurados (nombre, correo, rol) VALUES (?, ?, ?)");
+                            $stmtInsert->bind_param("sss", $nombre, $correo, $rol);
+                            if ($stmtInsert->execute()) $importados++;
+                            else $errores++;
+                            $stmtInsert->close();
+                        } else {
+                            $errores++;
+                        }
+                        $stmtCheck->close();
+                    } else {
+                        $errores++;
+                    }
+                }
+                $mensajeImportacion = "Importación completada: $importados importados, $errores errores.";
+            } catch (Exception $e) {
+                $error = "Error al leer el archivo Excel: " . $e->getMessage();
+            }
+        } else {
+            $error = "Error al subir el archivo.";
         }
     }
-    $stmt->close();
-}
-
-// Editar jurado
-if (isset($_POST['edit_jurado'])) {
-    $id = intval($_POST['edit_id']);
-    $nombre = trim($_POST['nombre_jurado']);
-    $correo = trim($_POST['correo_jurado']);
-    $rol    = trim($_POST['rol_jurado']);
-
-    // Verificar si el correo ya existe en otro jurado
-    $stmt = $conn->prepare("SELECT id FROM jurados WHERE correo = ? AND id <> ?");
-    $stmt->bind_param("si", $correo, $id);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if ($stmt->num_rows > 0) {
-        echo "<div class='alert alert-warning text-center'>⚠ El correo ya está registrado en otro jurado.</div>";
-    } else {
-        $stmt = $conn->prepare("UPDATE jurados SET nombre=?, correo=?, rol=? WHERE id=?");
-        $stmt->bind_param("sssi", $nombre, $correo, $rol, $id);
-        if ($stmt->execute()) {
-            echo "<div class='alert alert-success text-center'>✅ Jurado actualizado correctamente.</div>";
-        } else {
-            echo "<div class='alert alert-danger text-center'>❌ Error al actualizar: ".$conn->error."</div>";
-        }
-    }
-    $stmt->close();
 }
 
 // Eliminar jurado
 if (isset($_GET['del_jurado'])) {
-    $id = intval($_GET['del_jurado']);
-    $stmt = $conn->prepare("DELETE FROM jurados WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $stmt->close();
-    echo "<div class='alert alert-info text-center'>🗑 Jurado eliminado.</div>";
+    $id = (int)$_GET['del_jurado'];
+    $stmtDel = $conn->prepare("DELETE FROM jurados WHERE id = ?");
+    $stmtDel->bind_param("i", $id);
+    if ($stmtDel->execute()) {
+        $mensajeImportacion = "Jurado eliminado correctamente.";
+    } else {
+        $error = "Error al eliminar jurado: " . $stmtDel->error;
+    }
+    $stmtDel->close();
 }
 
 // Obtener lista de jurados
 $result = $conn->query("SELECT * FROM jurados ORDER BY nombre ASC");
-$jurados = $result->fetch_all(MYSQLI_ASSOC);
+
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Jurados</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <style>
-        .bg-ocre { background-color: #611010ff !important; }
-        .btn-ocre {
-            background-color: #611010ff !important;
-            border-color: #611010ff !important;
-            color: #fff !important;
-        }
-        .btn-ocre:hover {
-            background-color: #4a0c0c !important;
-            border-color: #4a0c0c !important;
-        }
-        .btn-gray {
-            background-color: #6c757d !important;
-            border-color: #6c757d !important;
-            color: #fff !important;
-        }
-        .btn-gray:hover {
-            background-color: #5a6268 !important;
-            border-color: #545b62 !important;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Gestión de Jurados</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+<style>
+.bg-ocre { background-color: #611010ff !important; }
+.btn-ocre { background-color: #611010ff !important; border-color: #611010ff !important; color: #fff !important; }
+.btn-ocre:hover { background-color: #4a0c0c !important; border-color: #4a0c0c !important; }
+.btn-gray { background-color: #6c757d !important; border-color: #6c757d !important; color: #fff !important; }
+.btn-gray:hover { background-color: #5a6268 !important; border-color: #545b62 !important; }
+</style>
 </head>
 <body class="bg-light">
 
-<!-- Barra de navegación -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-ocre mb-4">
   <div class="container-fluid">
     <a class="navbar-brand" href="index.php">Gestión de Grupos</a>
@@ -131,45 +208,59 @@ $jurados = $result->fetch_all(MYSQLI_ASSOC);
   </div>
 </nav>
 
-<div class="container mt-4">
-    <h2>Gestión de Jurados</h2>
-    <div class="card p-3 mb-4">
-        <form method="POST">
-            <input type="hidden" name="edit_id" value="<?= $edit_jurado['id'] ?? '' ?>">
-            <input type="text" name="nombre_jurado" class="form-control mb-2" placeholder="Nombre" required value="<?= htmlspecialchars($edit_jurado['nombre'] ?? '') ?>">
-            <input type="email" name="correo_jurado" class="form-control mb-2" placeholder="Correo" required value="<?= htmlspecialchars($edit_jurado['correo'] ?? '') ?>">
-            <select name="rol_jurado" class="form-control mb-2" required>
-                <option value="">Seleccione el rol del jurado</option>
-                <option value="Docente" <?= (isset($edit_jurado) && $edit_jurado['rol']=='Docente')?'selected':'' ?>>Docente</option>
-                <option value="Especialista" <?= (isset($edit_jurado) && $edit_jurado['rol']=='Especialista')?'selected':'' ?>>Especialista</option>
-                <option value="Investigador" <?= (isset($edit_jurado) && $edit_jurado['rol']=='Investigador')?'selected':'' ?>>Investigador</option>
-            </select>
-            <!-- Botón modificado: pequeño y alineado a la izquierda -->
-            <button type="submit" name="<?= $edit_jurado?'edit_jurado':'add_jurado' ?>" class="btn btn-ocre btn-sm float-start">
-                <?= $edit_jurado ? 'Actualizar' : 'Agregar' ?>
-            </button>
-        </form>
-    </div>
+<div class="container">
+<?php if ($error !== ''): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+<?php if ($mensajeImportacion !== ''): ?><div class="alert alert-success"><?= htmlspecialchars($mensajeImportacion) ?></div><?php endif; ?>
 
-    <ul class="list-group">
-        <?php if (!empty($jurados)): ?>
-            <?php foreach ($jurados as $j): ?>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong><?= htmlspecialchars($j['nombre']) ?></strong> - 
-                        <?= htmlspecialchars($j['correo']) ?> 
-                        <span class="badge bg-secondary"><?= htmlspecialchars($j['rol']) ?></span>
-                    </div>
-                    <div>
-                        <a href="?edit_jurado=<?= $j['id'] ?>" class="btn btn-sm btn-ocre me-1">Editar</a>
-                        <a href="?del_jurado=<?= $j['id'] ?>" class="btn btn-sm btn-gray">Eliminar</a>
-                    </div>
-                </li>
-            <?php endforeach; ?>
-        <?php else: ?>
-            <li class="list-group-item">No hay jurados registrados.</li>
-        <?php endif; ?>
-    </ul>
+<div class="row">
+  <div class="col-md-6">
+    <div class="card p-3 mb-4">
+      <h5>Registrar Jurado Manualmente</h5>
+      <form method="POST" novalidate>
+        <input type="text" name="nombre_jurado" class="form-control mb-2" placeholder="Nombre" required value="<?= htmlspecialchars($edit_jurado['nombre'] ?? '') ?>">
+        <input type="email" name="correo_jurado" class="form-control mb-2" placeholder="Correo institucional" required value="<?= htmlspecialchars($edit_jurado['correo'] ?? '') ?>">
+        <select name="rol_jurado" class="form-control mb-2" required>
+          <option value="">Seleccione el rol del jurado</option>
+          <option value="Docente" <?= (isset($edit_jurado) && $edit_jurado['rol']=='Docente')?'selected':'' ?>>Docente</option>
+          <option value="Especialista" <?= (isset($edit_jurado) && $edit_jurado['rol']=='Especialista')?'selected':'' ?>>Especialista</option>
+          <option value="Investigador" <?= (isset($edit_jurado) && $edit_jurado['rol']=='Investigador')?'selected':'' ?>>Investigador</option>
+        </select>
+        <button type="submit" name="<?= $edit_jurado?'edit_jurado':'add_jurado' ?>" class="btn btn-ocre w-100"><?= $edit_jurado?'Actualizar':'Agregar' ?></button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card p-3 mb-4">
+      <h5>Importar Jurados desde Excel</h5>
+      <form method="POST" enctype="multipart/form-data" novalidate>
+        <input type="file" name="archivo_excel" class="form-control mb-2" accept=".xlsx" required>
+        <button type="submit" name="importar_excel" class="btn btn-success w-100">Importar</button>
+      </form>
+      <a href="?descargar_plantilla=1" class="btn btn-link mt-2">Descargar plantilla</a>
+    </div>
+  </div>
 </div>
+
+<h5>Lista de Jurados</h5>
+<ul class="list-group">
+<?php if ($result && $result->num_rows > 0): ?>
+  <?php while ($j = $result->fetch_assoc()): ?>
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <strong><?= htmlspecialchars($j['nombre']) ?></strong> - <?= htmlspecialchars($j['correo']) ?> 
+      <span class="badge bg-secondary"><?= htmlspecialchars($j['rol']) ?></span>
+      <div>
+        <a href="?edit_jurado=<?= $j['id'] ?>" class="btn btn-sm btn-ocre me-1">Editar</a>
+        <a href="?del_jurado=<?= $j['id'] ?>" class="btn btn-sm btn-gray" onclick="return confirm('¿Seguro que deseas eliminar este jurado?');">Eliminar</a>
+      </div>
+    </li>
+  <?php endwhile; ?>
+<?php else: ?>
+  <li class="list-group-item">No hay jurados registrados.</li>
+<?php endif; ?>
+</ul>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

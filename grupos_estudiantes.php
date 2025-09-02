@@ -5,7 +5,7 @@ require_once 'Conexion.php';
 global $conexion;
 
 // --- FUNCIONES BD: GUARDAR, ACTUALIZAR Y ELIMINAR ---
-function guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes, ) {
+function guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes, $tema) {
     global $conexion;
     $stmt = $conexion->prepare("INSERT INTO grupos_estudiantes (grupo_jurado_id, pre_especialidad, dia, hora, aula, grupo, tema) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
@@ -24,16 +24,14 @@ function guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula,
     return false;
 }
 
-function actualizarGrupoBD($id, $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes) {
+function actualizarGrupoBD($id, $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes, $tema) {
     global $conexion;
 
     $id = intval($id); // <-- Convertir a entero
 
     // Actualizar grupo principal
     $stmt = $conexion->prepare("UPDATE grupos_estudiantes SET grupo_jurado_id=?, pre_especialidad=?, dia=?, hora=?, aula=?, grupo=?, tema=? WHERE id=?");
-
     $stmt->bind_param("issssssi", $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $tema, $id);
-
 
     if ($stmt->execute()) {
         // Primero eliminamos los detalles antiguos
@@ -52,7 +50,6 @@ function actualizarGrupoBD($id, $grupo_jurado_id, $pre_especialidad, $dia, $hora
     return false;
 }
 
-
 function eliminarGrupoBD($id) {
     global $conexion;
     $conexion->query("DELETE FROM grupos_estudiantes_detalle WHERE grupo_estudiante_id=".$id);
@@ -68,7 +65,6 @@ if (!isset($_SESSION['jurados']) || empty($_SESSION['jurados'])) {
     }
 } 
 
-
 // --- CARGAR ESTUDIANTES ---
 if (!isset($_SESSION['estudiantes']) || empty($_SESSION['estudiantes'])) {
     $_SESSION['estudiantes'] = [];
@@ -80,15 +76,12 @@ if (!isset($_SESSION['estudiantes']) || empty($_SESSION['estudiantes'])) {
 
 // --- CARGAR GRUPOS DE JURADOS (SIEMPRE ACTUALIZADO DESDE BD) ---
 $_SESSION['grupos_jurados'] = [];
-
 $result = $conexion->query("SELECT * FROM grupos_jurados");
 while ($grupo = $result->fetch_assoc()) {
     $jurados_asignados = [];
-
     for ($i = 1; $i <= 3; $i++) {
         $key = 'jurado'.$i.'_id';
         if (!empty($grupo[$key])) {
-            // Consulta datos completos del jurado
             $stmtJ = $conexion->prepare("SELECT nombre, correo, rol FROM jurados WHERE id = ?");
             $stmtJ->bind_param("i", $grupo[$key]);
             $stmtJ->execute();
@@ -106,14 +99,11 @@ while ($grupo = $result->fetch_assoc()) {
     }
 
     $_SESSION['grupos_jurados'][(int)$grupo['id']] = [
-    'grupo_nombre' => $grupo['grupo_nombre'] ?? "Grupo ".(int)$grupo['id'],
-    'jurados' => $jurados_asignados,
-    'grupos_asignados' => 0,
-];
-
-
+        'grupo_nombre' => $grupo['grupo_nombre'] ?? "Grupo ".(int)$grupo['id'],
+        'jurados' => $jurados_asignados,
+        'grupos_asignados' => 0,
+    ];
 }
-
 
 // --- CARGAR GRUPOS DE ESTUDIANTES DESDE BD ---
 if (!isset($_SESSION['grupos_estudiantes']) || empty($_SESSION['grupos_estudiantes'])) {
@@ -218,7 +208,7 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
         if (isset($_POST['add_grupo_estudiantes'])) {
             // CREAR NUEVO GRUPO
             if ($_SESSION['grupos_jurados'][$grupo_jurado_id]['grupos_asignados'] < 3) {
-                $nuevo_id = guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes_ids);
+                $nuevo_id = guardarGrupoBD($grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes_ids, $tema);
                 if ($nuevo_id) {
                     $_SESSION['grupos_estudiantes'][$nuevo_id] = [
                         'grupo_jurado_id' => $grupo_jurado_id,
@@ -229,7 +219,6 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
                         'aula' => $aula,
                         'grupo' => $grupo, 
                         'tema' => $tema 
-                
                     ];
                     $_SESSION['grupos_jurados'][$grupo_jurado_id]['grupos_asignados']++;
                     $_SESSION['mensaje_exito'] = "Grupo creado exitosamente.";
@@ -241,7 +230,7 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
         } elseif (isset($_POST['edit_grupo_estudiantes'])) {
             // EDITAR GRUPO EXISTENTE
             if ($edit_id && isset($_SESSION['grupos_estudiantes'][$edit_id])) {
-                if (actualizarGrupoBD($edit_id, $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes_ids)) {
+                if (actualizarGrupoBD($edit_id, $grupo_jurado_id, $pre_especialidad, $dia, $hora, $aula, $grupo, $estudiantes_ids, $tema)) {
                     // Actualiza la sesión
                     $old_id = $_SESSION['grupos_estudiantes'][$edit_id]['grupo_jurado_id'];
                     $_SESSION['grupos_jurados'][$old_id]['grupos_asignados']--;
@@ -285,7 +274,6 @@ if (isset($_POST['add_grupo_estudiantes']) || isset($_POST['edit_grupo_estudiant
     }
 }
 
-
 if (isset($_GET['del_grupo_estudiante'])) {
     $id = $_GET['del_grupo_estudiante'];
     eliminarGrupoBD($id);
@@ -297,7 +285,6 @@ if (isset($_GET['del_grupo_estudiante'])) {
     $_SESSION['grupos_estudiantes'] = array_values($_SESSION['grupos_estudiantes']);
     $mensaje_exito = "Grupo eliminado exitosamente.";
 }
-
 
 if (isset($_GET['edit_grupo_estudiante'])) {
     $edit_id = intval($_GET['edit_grupo_estudiante']); // convierte a entero
@@ -333,9 +320,6 @@ if (isset($_GET['edit_grupo_estudiante'])) {
         $error = "El grupo que intentas editar no existe.";
     }
 }
-
-
-
 ?>
 <!DOCTYPE html>
 <html lang="es">

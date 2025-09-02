@@ -4,6 +4,21 @@ include 'funciones.php';
 require_once 'Conexion.php';
 global $conexion;
 
+// --- GUARDAR NOTA FINAL EN BD ---
+if(isset($_POST['guardar_nota']) && !empty($_POST['grupo_id']) && isset($_POST['nota_final'])){
+    $grupo_id = intval($_POST['grupo_id']);
+    $nota_final = floatval($_POST['nota_final']);
+
+    $stmt = $conexion->prepare("UPDATE grupos_estudiantes SET nota_final=? WHERE id=?");
+    $stmt->bind_param("di", $nota_final, $grupo_id);
+    if($stmt->execute()){
+        $mensaje_exito = "✅ Nota final guardada correctamente: $nota_final";
+    } else {
+        $mensaje_error = "❌ Error al guardar la nota final.";
+    }
+    $stmt->close();
+}
+
 // --- CARGAR TODOS LOS GRUPOS DESDE BD ---
 $grupos_estudiantes = [];
 $res_grupos = $conexion->query("SELECT * FROM grupos_estudiantes ORDER BY grupo ASC");
@@ -98,6 +113,20 @@ if (isset($_GET['grupo_id']) && isset($grupos_estudiantes[$_GET['grupo_id']])) {
 <body class="bg-light">
 <div class="container mt-4">
 
+<!-- SELECTOR DE GRUPO -->
+<div class="mb-3">
+    <form method="get">
+        <select name="grupo_id" class="form-select" onchange="this.form.submit()">
+            <option value="">Seleccione un grupo...</option>
+            <?php foreach($grupos_estudiantes as $id => $g): ?>
+            <option value="<?= $id ?>" <?= ($selected_id == $id)?'selected':'' ?>>
+                <?= htmlspecialchars($g['grupo']) ?> - <?= htmlspecialchars($g['pre_especialidad']) ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+    </form>
+</div>
+
 <?php if($info_grupo): ?>
 <div class="card card-ocre">
 <h4>Detalle Grupo <?= htmlspecialchars($info_grupo['grupo']) ?></h4>
@@ -188,27 +217,27 @@ if (isset($_GET['grupo_id']) && isset($grupos_estudiantes[$_GET['grupo_id']])) {
 
 <div id="mensaje-final"></div> 
 Para aprobar el trabajo de Graduación, el dictamen debe ser unánime por todos los miembros del Jurado. Con uno de los Jurados que haya dictaminado como Reprobado, de acuerdo a su calificación del dictamen final, será Reprobado.
+
+<!-- FORMULARIO PARA GUARDAR NOTA FINAL -->
+<form method="POST" onsubmit="return confirm('¿Está seguro de guardar la nota final?');">
+    <input type="hidden" name="grupo_id" value="<?= $selected_id ?>">
+    <input type="hidden" name="nota_final" id="hidden-nota-final">
+    <button type="submit" name="guardar_nota" class="btn" style="background-color:#611010ff; color:white; margin-top:10px;">Guardar Nota Final</button>
+
+</form>
+
+<?php if(isset($mensaje_exito)): ?>
+<div class="alert alert-success mt-2"><?= $mensaje_exito ?></div>
+<?php endif; ?>
+<?php if(isset($mensaje_error)): ?>
+<div class="alert alert-danger mt-2"><?= $mensaje_error ?></div>
+<?php endif; ?>
+
 </div> 
-
-
 
 <?php else: ?>
 <p class="text-center"><em>Seleccione un grupo para ver el detalle.</em></p>
 <?php endif; ?>
-
-<!-- SELECTOR DE GRUPO -->
-<div class="mt-3">
-<form method="get">
-<select name="grupo_id" class="form-select" onchange="this.form.submit()">
-<option value="">Seleccione un grupo...</option>
-<?php foreach($grupos_estudiantes as $id => $g): ?>
-<option value="<?= $id ?>" <?= ($selected_id == $id)?'selected':'' ?>>
-<?= htmlspecialchars($g['grupo']) ?> - <?= htmlspecialchars($g['pre_especialidad']) ?>
-</option>
-<?php endforeach; ?>
-</select>
-</form>
-</div>
 
 </div>
 
@@ -240,11 +269,13 @@ function calcularTotales(){
     });
 
     const mensaje = document.getElementById('mensaje-final');
+    const hiddenFinal = document.getElementById('hidden-nota-final');
 
     if(valid){
         document.getElementById('total-doc').value = totalDoc.toFixed(2);
         document.getElementById('total-oral').value = totalOral.toFixed(2);
         const final = (totalDoc + totalOral)/2;
+        hiddenFinal.value = final.toFixed(2);
         if(final>=7){
             mensaje.innerHTML = `<div class="alert alert-success">✅ Aprobado con nota final: ${final.toFixed(2)}</div>`;
         } else {
@@ -253,6 +284,7 @@ function calcularTotales(){
     } else {
         document.getElementById('total-doc').value = '';
         document.getElementById('total-oral').value = '';
+        hiddenFinal.value = '';
         mensaje.innerHTML = `<div class="alert alert-warning">⚠️ Todas las casillas deben completarse antes de calcular.</div>`;
     }
 }
@@ -261,7 +293,7 @@ function calcularTotales(){
 function handleEnterMove(e){
     if(e.key==='Enter'){
         e.preventDefault();
-        if(e.target.value.trim()==='') return; // no permite pasar si está vacía
+        if(e.target.value.trim()==='') return;
         const inputs = Array.from(document.querySelectorAll('.nota-doc, .nota-oral'));
         const index = inputs.indexOf(e.target);
         if(index >= 0 && index < inputs.length-1){
@@ -284,3 +316,4 @@ document.querySelectorAll('.nota-doc, .nota-oral').forEach(input=>{
 </script>
 </body>
 </html>
+
